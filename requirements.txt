@@ -1,0 +1,12 @@
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.36
+plotly>=5.18.0
+scipy>=1.12.0
+ta>=0.11.0
+cvxpy>=1.4.1
+altair>=5.2.0
+requests>=2.31.0
+lxml>=4.9.0
+html5lib>=1.1
