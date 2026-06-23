@@ -257,15 +257,15 @@ with tab1:
                 }
                 
                 if 'VaR' in frontier_type:
-                    relevant_portfolios.update({
+                    relevant_portfolios = {
                         "Mínimo VaR": portfolios["Mínimo VaR"],
                         "Máximo Sharpe-VaR": portfolios["Máximo Sharpe-VaR"]
-                    })
-                elif 'CVaR' in frontier_type:
-                    relevant_portfolios.update({
+                    }
+                if 'CVaR' in frontier_type:
+                    relevant_portfolios = {
                         "Mínimo CVaR": portfolios["Mínimo CVaR"],
                         "Máximo STARR": portfolios["Máximo STARR"]
-                    })
+                    }
                 
                 colors = ['red', 'green', 'orange', 'purple', 'brown']
                 for i, (name, port) in enumerate(relevant_portfolios.items()):
@@ -507,8 +507,24 @@ with tab2:
         
         if st.button("➕ Agregar Estrategia Combinada"):
             combined_strategy = CombinedStrategy(configured_strategies, combination_type)
+            
+            strategy_registry.register_strategy(
+                name=combined_strategy.name,
+                strategy_class=type(combined_strategy),
+                category="Combinadas",
+                description=f"Estrategia combinada ({combination_type}) - {len(configured_strategies)} estrategias base",
+                params={}  # Sin parámetros adicionales
+            )
+            
+            # También guardar la instancia para poder usarla
+            strategy_registry._strategies[combined_strategy.name]['instance'] = combined_strategy            
+                
             configured_strategies.append(combined_strategy)
+
+            st.session_state['configured_strategies'] = configured_strategies
             st.success(f"✅ Estrategia combinada agregada: **{combined_strategy.name}**")
+            st.info("La estrategia combinada ya está disponible en el Backtest (Tab 3)")
+ 
     
     # Guardar estrategias en session_state
     st.session_state['configured_strategies'] = configured_strategies
@@ -606,6 +622,7 @@ with tab3:
             if strategy_mode == "📊 Estrategia Estándar":
                 # Elegir una estrategia del registro
                 all_strategies = strategy_registry.get_all_strategies()
+
                 
                 selected_strategy_name = st.selectbox(
                     "Elige la estrategia a evaluar:",
@@ -617,6 +634,7 @@ with tab3:
                 strategy_info = all_strategies[selected_strategy_name]
                 st.caption(f"📝 {strategy_info['description']}")
                 
+
                 # Configurar parámetros
                 st.write("**Parámetros:**")
                 params = {}
@@ -644,9 +662,17 @@ with tab3:
                                     key=f"eval_{param_name}"
                                 )
                 
-                # Crear la estrategia
-                eval_strategy = strategy_registry.get_strategy(selected_strategy_name, **params)
+                
+                                # Crear la estrategia
+                if 'instance' in strategy_info:
+                    eval_strategy = strategy_info['instance']
+                else:
+                    eval_strategy = strategy_registry.get_strategy(selected_strategy_name, **params)
+
                 st.success(f"✅ Estrategia: **{eval_strategy.name}**")
+                asset_strategies = {ticker: eval_strategy for ticker in tickers}
+
+
                 
                 # Aplicar a todos los activos
                 asset_strategies = {ticker: eval_strategy for ticker in tickers}
@@ -656,6 +682,8 @@ with tab3:
                 st.write("**Configura estrategias por activo:**")
                 
                 all_strategies = strategy_registry.get_all_strategies()
+
+
                 asset_strategies = {}
                 
                 for ticker in tickers:
@@ -692,8 +720,13 @@ with tab3:
                                             key=f"custom_{ticker}_{param_name}"
                                         )
                         
-                        asset_strategies[ticker] = strategy_registry.get_strategy(strat_name, **params)
-            
+                        # AQUI EL CAMBIO:
+                        if 'instance' in strat_info:
+                            asset_strategies[ticker] = strat_info['instance']
+                        else:
+                            asset_strategies[ticker] = strategy_registry.get_strategy(strat_name, **params)
+
+
             st.markdown("---")
             
 

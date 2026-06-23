@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from typing import Dict, List, Callable,Tuple
-import cvxpy as cp
+from typing import Dict, List, Tuple, Optional
+from itertools import product
 
 class PortfolioOptimizer:
     def __init__(self, returns: pd.DataFrame, risk_free_rate: float = 0.0):
@@ -12,18 +12,14 @@ class PortfolioOptimizer:
         self.mean_returns = returns.mean() * 252
         self.cov_matrix = returns.cov() * 252
         
-    def portfolio_performance(self, weights: np.array) -> Tuple[float, float]:
-        """
-        Calcula retorno y riesgo del portafolio
-        """
+    def portfolio_performance(self, weights: np.ndarray) -> Tuple[float, float]:
+        """Calcula retorno y riesgo del portafolio (anualizados)"""
         portfolio_return = np.sum(self.mean_returns * weights)
         portfolio_std = np.sqrt(weights.T @ self.cov_matrix @ weights)
         return portfolio_return, portfolio_std
     
-    def minimize_risk(self, target_return: float = None) -> Dict:
-        """
-        Minimiza el riesgo para un retorno objetivo o el mínimo riesgo posible
-        """
+    def minimize_risk(self, target_return: Optional[float] = None) -> Dict:
+        """Minimiza el riesgo (desviación estándar)"""
         def objective(weights):
             return np.sqrt(weights.T @ self.cov_matrix @ weights)
         
@@ -52,10 +48,8 @@ class PortfolioOptimizer:
             'risk': objective(result.x)
         }
     
-    def maximize_return(self, max_risk: float = None) -> Dict:
-        """
-        Maximiza el retorno para un nivel de riesgo dado
-        """
+    def maximize_return(self, max_risk: Optional[float] = None) -> Dict:
+        """Maximiza el retorno para un nivel de riesgo dado"""
         def objective(weights):
             return -np.sum(self.mean_returns * weights)
         
@@ -85,9 +79,7 @@ class PortfolioOptimizer:
         }
     
     def maximize_sharpe_ratio(self) -> Dict:
-        """
-        Maximiza el Sharpe Ratio
-        """
+        """Maximiza el Sharpe Ratio"""
         def neg_sharpe_ratio(weights):
             p_return, p_std = self.portfolio_performance(weights)
             if p_std == 0:
@@ -115,165 +107,95 @@ class PortfolioOptimizer:
             'sharpe_ratio': (p_return - self.risk_free_rate) / p_std
         }
     
-    def maximize_var_sharpe_ratio(self, confidence_level: float = 0.95) -> Dict:
-        """
-        Maximiza el Ratio Sharpe-VaR usando optimización con CVXPY
-        """
-        # Esta es una versión simplificada. En producción usarías CVXPY
-        # para mejor precisión con restricciones no lineales
-        
-        # Por ahora, usamos un grid search simple para demostración
-        from itertools import product
-        
-        best_ratio = -np.inf
-        best_weights = None
-        
-        # Grid search simple (en producción usar optimización más sofisticada)
-        grid_points = 20
-        ranges = [np.linspace(0, 1, grid_points) for _ in range(self.n_assets - 1)]
-        
-        for combo in product(*ranges):
-            if sum(combo) > 1:
-                continue
-            
-            weights = list(combo) + [1 - sum(combo)]
-            weights = np.array(weights)
-            
-            portfolio_returns = (self.returns * weights).sum(axis=1)
-            
-            from utils.risk_metrics import RiskMetrics
-            var = RiskMetrics.calculate_var(portfolio_returns, confidence_level)
-            
-            if var > 0:
-                ratio = (portfolio_returns.mean() * 252 - self.risk_free_rate) / var
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_weights = weights
-        
-        if best_weights is None:
-            best_weights = np.array([1/self.n_assets] * self.n_assets)
-        
-        p_return, p_std = self.portfolio_performance(best_weights)
-        
-        return {
-            'weights': best_weights,
-            'return': p_return,
-            'risk': p_std,
-            'var_sharpe_ratio': best_ratio
-        }
-    
-    def maximize_staar_ratio(self, confidence_level: float = 0.95) -> Dict:
-        """
-        Maximiza el STARR Ratio
-        """
-        # Implementación simplificada con grid search
-        from itertools import product
-        
-        best_ratio = -np.inf
-        best_weights = None
-        
-        grid_points = 15
-        ranges = [np.linspace(0, 1, grid_points) for _ in range(self.n_assets - 1)]
-        
-        for combo in product(*ranges):
-            if sum(combo) > 1:
-                continue
-            
-            weights = list(combo) + [1 - sum(combo)]
-            weights = np.array(weights)
-            
-            portfolio_returns = (self.returns * weights).sum(axis=1)
-            
-            from utils.risk_metrics import RiskMetrics
-            cvar = RiskMetrics.calculate_cvar(portfolio_returns, confidence_level)
-            
-            if cvar > 0:
-                ratio = (portfolio_returns.mean() * 252 - self.risk_free_rate) / cvar
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_weights = weights
-        
-        if best_weights is None:
-            best_weights = np.array([1/self.n_assets] * self.n_assets)
-        
-        p_return, p_std = self.portfolio_performance(best_weights)
-        
-        return {
-            'weights': best_weights,
-            'return': p_return,
-            'risk': p_std,
-            'staar_ratio': best_ratio
-        }
-    
-# Agregar estos métodos al PortfolioOptimizer existente
 
     def generate_efficient_frontier(
-        self, 
-        n_points: int = 50, 
-        risk_metric: str = 'std'
-    ) -> pd.DataFrame:
-        """
-        Genera la frontera eficiente con diferentes métricas de riesgo
-        
-        Args:
-            n_points: Número de puntos en la frontera
+            self, 
+            n_points: int = 50, 
+            risk_metric: str = 'std'
+        ) -> pd.DataFrame:
+            """
+            Genera la frontera eficiente optimizando directamente para la métrica de riesgo seleccionada.
             risk_metric: 'std', 'var', 'cvar'
+            """
+            from utils.risk_metrics import RiskMetrics
             
-        Returns:
-            DataFrame con puntos de la frontera
-        """
-        from utils.risk_metrics import RiskMetrics
-        
-        # Encontrar portafolios extremos
-        min_risk_port = self.minimize_risk()
-        max_return_port = self.maximize_return()
-        
-        # Generar puntos en la frontera
-        target_returns = np.linspace(
-            min_risk_port['return'], 
-            max_return_port['return'], 
-            n_points
-        )
-        
-        frontier_points = []
-        
-        for target_return in target_returns:
-            try:
-                # Optimizar para el retorno objetivo
-                portfolio = self.minimize_risk(target_return)
-                weights = portfolio['weights']
+            # 1. Encontrar el rango de retornos posibles en base a los activos individuales
+            # El retorno mínimo razonable es el del portafolio de mínima varianza (o mínimo VaR/CVaR global)
+            # El retorno máximo es siempre el del activo con mayor rendimiento individual
+            min_risk_port = self.minimize_risk()
+            max_return_port = self.maximize_return()
+            
+            target_returns = np.linspace(
+                min_risk_port['return'], 
+                max_return_port['return'], 
+                n_points
+            )
+            
+            frontier_points = []
+            bounds = tuple((0, 1) for _ in range(self.n_assets))
+            initial_weights = np.array([1/self.n_assets] * self.n_assets)
+            
+            for target_return in target_returns:
+                try:
+                    # Definir restricciones comunes: pesos suman 1 y el retorno esperado es igual al target
+                    constraints = [
+                        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
+                        {'type': 'eq', 'fun': lambda w: np.sum(self.mean_returns * w) - target_return}
+                    ]
+                    
+                    # Definir la función objetivo dinámicamente según la métrica
+                    if risk_metric == 'std':
+                        def objective(w):
+                            return np.sqrt(w.T @ self.cov_matrix @ w)
+                            
+                    elif risk_metric == 'var':
+                        def objective(w):
+                            portfolio_daily_returns = (self.returns * w).sum(axis=1)
+                            # Minimizamos el VaR anualizado
+                            return RiskMetrics.calculate_var(portfolio_daily_returns) * np.sqrt(252)
+                            
+                    elif risk_metric == 'cvar':
+                        def objective(w):
+                            portfolio_daily_returns = (self.returns * w).sum(axis=1)
+                            # Minimizamos el CVaR anualizado
+                            return RiskMetrics.calculate_cvar(portfolio_daily_returns) * np.sqrt(252)
+                    else:
+                        def objective(w):
+                            return np.sqrt(w.T @ self.cov_matrix @ w)
+                    
+                    # Ejecutar la optimización real para la métrica seleccionada
+                    result = minimize(
+                        objective, 
+                        initial_weights,
+                        method='SLSQP',
+                        bounds=bounds,
+                        constraints=constraints
+                    )
+                    
+                    if result.success:
+                        weights = result.x
+                        risk = result.fun
+                        portfolio_return = np.sum(self.mean_returns * weights)
+                        
+                        if risk > 0 and not np.isnan(risk) and not np.isinf(risk) and risk < 5.0:
+                            sharpe = (portfolio_return - self.risk_free_rate) / risk
+                            frontier_points.append({
+                                'risk': risk,
+                                'return': portfolio_return,
+                                'sharpe_ratio': sharpe
+                            })
+                except Exception as e:
+                    continue
+                    
+            if len(frontier_points) < 3:
+                # Fallback en caso de que falle SLSQP con VaR/CVaR en algún punto crítico
+                return self.generate_efficient_frontier(n_points, 'std')
                 
-                # Calcular retorno del portafolio
-                portfolio_returns = (self.returns * weights).sum(axis=1)
-                
-                # Calcular riesgo según la métrica seleccionada
-                if risk_metric == 'std':
-                    risk = portfolio['risk']
-                elif risk_metric == 'var':
-                    risk = RiskMetrics.calculate_var(portfolio_returns)
-                elif risk_metric == 'cvar':
-                    risk = RiskMetrics.calculate_cvar(portfolio_returns)
-                else:
-                    risk = portfolio['risk']
-                
-                # Calcular Sharpe Ratio
-                sharpe = (portfolio['return'] - self.risk_free_rate) / risk if risk > 0 else 0
-                
-                frontier_points.append({
-                    'risk': risk,
-                    'return': portfolio['return'],
-                    'sharpe_ratio': sharpe
-                })
-                
-            except Exception as e:
-                continue
-        
-        return pd.DataFrame(frontier_points)
+            df = pd.DataFrame(frontier_points)
+            return df.sort_values('return')
 
     def minimize_var(self, confidence_level: float = 0.95) -> Dict:
-        """
-        Minimiza el Value at Risk del portafolio
-        """
+        """Minimiza el Value at Risk del portafolio"""
         from utils.risk_metrics import RiskMetrics
         
         def objective(weights):
@@ -282,29 +204,48 @@ class PortfolioOptimizer:
         
         constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
         bounds = tuple((0, 1) for _ in range(self.n_assets))
-        initial_weights = np.array([1/self.n_assets] * self.n_assets)
         
-        result = minimize(
-            objective,
-            initial_weights,
-            method='SLSQP',
-            bounds=bounds,
-            constraints=constraints
-        )
+        # Múltiples puntos de inicio
+        best_result = None
+        best_obj = float('inf')
         
-        p_return, p_std = self.portfolio_performance(result.x)
+        np.random.seed(42)
+        for _ in range(10):
+            initial_weights = np.random.dirichlet(np.ones(self.n_assets))
+            
+            result = minimize(
+                objective,
+                initial_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints,
+                options={'maxiter': 1000}
+            )
+            
+            if result.success and result.fun < best_obj:
+                best_result = result
+                best_obj = result.fun
+        
+        if best_result is None:
+            return self.minimize_risk()
+        
+        weights = best_result.x
+        portfolio_returns = (self.returns * weights).sum(axis=1)
+        
+        var_daily = RiskMetrics.calculate_var(portfolio_returns, confidence_level)
+        var_annual = var_daily * np.sqrt(252)
+        
+        p_return, p_std = self.portfolio_performance(weights)
         
         return {
-            'weights': result.x,
+            'weights': weights,
             'return': p_return,
-            'risk': objective(result.x),
-            'var': objective(result.x)
+            'risk': var_annual,
+            'var': var_annual
         }
-
+    
     def minimize_cvar(self, confidence_level: float = 0.95) -> Dict:
-        """
-        Minimiza el Conditional Value at Risk del portafolio
-        """
+        """Minimiza el CVaR del portafolio"""
         from utils.risk_metrics import RiskMetrics
         
         def objective(weights):
@@ -313,21 +254,120 @@ class PortfolioOptimizer:
         
         constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
         bounds = tuple((0, 1) for _ in range(self.n_assets))
-        initial_weights = np.array([1/self.n_assets] * self.n_assets)
         
-        result = minimize(
-            objective,
-            initial_weights,
-            method='SLSQP',
-            bounds=bounds,
-            constraints=constraints
-        )
+        best_result = None
+        best_obj = float('inf')
         
-        p_return, p_std = self.portfolio_performance(result.x)
+        np.random.seed(42)
+        for _ in range(10):
+            initial_weights = np.random.dirichlet(np.ones(self.n_assets))
+            
+            result = minimize(
+                objective,
+                initial_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints,
+                options={'maxiter': 1000}
+            )
+            
+            if result.success and result.fun < best_obj:
+                best_result = result
+                best_obj = result.fun
+        
+        if best_result is None:
+            return self.minimize_risk()
+        
+        weights = best_result.x
+        portfolio_returns = (self.returns * weights).sum(axis=1)
+        
+        cvar_daily = RiskMetrics.calculate_cvar(portfolio_returns, confidence_level)
+        cvar_annual = cvar_daily * np.sqrt(252)
+        
+        p_return, p_std = self.portfolio_performance(weights)
         
         return {
-            'weights': result.x,
+            'weights': weights,
             'return': p_return,
-            'risk': objective(result.x),
-            'cvar': objective(result.x)
+            'risk': cvar_annual,
+            'cvar': cvar_annual
+        }
+    
+    def maximize_var_sharpe_ratio(self, confidence_level: float = 0.95) -> Dict:
+        """
+        Maximiza el Ratio Sharpe-VaR buscando sobre la frontera eficiente
+        """
+        from utils.risk_metrics import RiskMetrics
+        
+        # Generar la frontera con VaR
+        frontier = self.generate_efficient_frontier(n_points=100, risk_metric='var')
+        
+        if frontier.empty:
+            # Fallback
+            return self.maximize_sharpe_ratio()
+        
+        # Calcular el ratio para cada punto de la frontera
+        frontier['var_sharpe'] = (frontier['return'] - self.risk_free_rate) / frontier['risk']
+        
+        # Encontrar el punto con máximo ratio
+        best_idx = frontier['var_sharpe'].idxmax()
+        best_point = frontier.loc[best_idx]
+        
+        # Obtener los pesos para ese punto
+        target_return = best_point['return']
+        portfolio = self.minimize_risk(target_return)
+        weights = portfolio['weights']
+        
+        # Calcular métricas con los pesos óptimos
+        portfolio_returns = (self.returns * weights).sum(axis=1)
+        var_daily = RiskMetrics.calculate_var(portfolio_returns, confidence_level)
+        var_annual = var_daily * np.sqrt(252)
+        
+        p_return, p_std = self.portfolio_performance(weights)
+        
+        return{
+            'weights': weights,
+            'return': p_return,
+            'risk': var_annual,
+            'var_sharpe_ratio': best_point['var_sharpe']
+        }
+
+
+    def maximize_staar_ratio(self, confidence_level: float = 0.95) -> Dict:
+        """
+        Maximiza el STARR Ratio buscando sobre la frontera eficiente
+        """
+        from utils.risk_metrics import RiskMetrics
+        
+        # Generar la frontera con CVaR
+        frontier = self.generate_efficient_frontier(n_points=100, risk_metric='cvar')
+        
+        if frontier.empty:
+            # Fallback
+            return self.maximize_sharpe_ratio()
+        
+        # Calcular el ratio para cada punto de la frontera
+        frontier['staar'] = (frontier['return'] - self.risk_free_rate) / frontier['risk']
+        
+        # Encontrar el punto con máximo ratio
+        best_idx = frontier['staar'].idxmax()
+        best_point = frontier.loc[best_idx]
+        
+        # Obtener los pesos para ese punto
+        target_return = best_point['return']
+        portfolio = self.minimize_risk(target_return)
+        weights = portfolio['weights']
+        
+        # Calcular métricas con los pesos óptimos
+        portfolio_returns = (self.returns * weights).sum(axis=1)
+        cvar_daily = RiskMetrics.calculate_cvar(portfolio_returns, confidence_level)
+        cvar_annual = cvar_daily * np.sqrt(252)
+        
+        p_return, p_std = self.portfolio_performance(weights)
+        
+        return {
+            'weights': weights,
+            'return': p_return,
+            'risk': cvar_annual,
+            'staar_ratio': best_point['staar']
         }
