@@ -611,7 +611,19 @@ with tab3:
                     use_container_width=True
                 )
             except ValueError:
-                st.warning("⚠️ Algunos tickers no tienen datos para el período seleccionado.")
+                st.warning("⚠️ Algunos tickers no tienen datos para el período seleccionado. Sin embargo si se puede seguir con el programa.")
+                dist_df = pd.DataFrame({
+                    'Activo': tickers,
+                    'Peso': selected_weights,
+                    'Capital': [initial_capital * w for w in selected_weights]
+                })
+                st.dataframe(
+                    dist_df.style.format({
+                        'Peso': lambda x: f'{x:.2%}',
+                        'Capital': lambda x: f'${x:,.2f}'
+                    }),
+                    use_container_width=True
+                )
             
             st.markdown("---")
             
