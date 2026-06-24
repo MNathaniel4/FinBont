@@ -743,14 +743,24 @@ with tab3:
                 with st.spinner('Ejecutando backtest...'):
                     
 
-                    
                     # ============================================
                     # 1. CALCULAR RENDIMIENTOS INDIVIDUALES
                     # ============================================
                     individual_results = {}
-                    
+
                     for ticker in tickers:
                         weight = selected_weights[tickers.index(ticker)]
+                        
+                        # Si el peso es 0%, saltar este activo
+                        if weight < 0.0001:
+                            zero_series = pd.Series(0.0, index=test_returns.index)
+                            individual_results[ticker] = {
+                                'strategy_returns': zero_series.copy(),
+                                'asset_returns': zero_series.copy(),
+                                'strategy_name': 'Sin asignación (0%)'
+                            }
+                            continue
+                        
                         asset_capital = initial_capital * weight
                         
                         # Obtener datos del activo
@@ -790,17 +800,17 @@ with tab3:
                             'asset_returns': asset_returns * weight,
                             'strategy_name': strategy.name
                         }
-                    
+
                     # ============================================
                     # 2. PORTAFOLIO = SUMA DE INDIVIDUALES
                     # ============================================
-                    portfolio_strategy_returns = pd.Series(0, index=test_returns.index)
-                    portfolio_benchmark_returns = pd.Series(0, index=test_returns.index)
-                    
+                    portfolio_strategy_returns = pd.Series(0.0, index=test_returns.index)
+                    portfolio_benchmark_returns = pd.Series(0.0, index=test_returns.index)
+
                     for ticker in tickers:
                         portfolio_strategy_returns += individual_results[ticker]['strategy_returns']
                         portfolio_benchmark_returns += individual_results[ticker]['asset_returns']
-                    
+
                     # Métricas del portafolio
                     portfolio_strategy_metrics = backtest_engine.calculate_metrics(
                         portfolio_strategy_returns, "Estrategia Principal"
@@ -808,7 +818,7 @@ with tab3:
                     portfolio_benchmark_metrics = backtest_engine.calculate_metrics(
                         portfolio_benchmark_returns, "Buy & Hold"
                     )
-                    
+
                     # Ajustar retornos acumulados al capital
                     portfolio_strategy_metrics['cumulative_returns'] = (
                         (1 + portfolio_strategy_returns).cumprod() * initial_capital
@@ -816,7 +826,7 @@ with tab3:
                     portfolio_benchmark_metrics['cumulative_returns'] = (
                         (1 + portfolio_benchmark_returns).cumprod() * initial_capital
                     )
-                    
+
                     # ============================================
                     # 3. BENCHMARKS FIJOS (MACD y Bollinger)
                     # ============================================
@@ -824,16 +834,20 @@ with tab3:
                         'MACD': MACDMomentumStrategy(fast=12, slow=26, signal=9),
                         'Bollinger Bands': BollingerBandsStrategy(period=20, std_dev=2.0)
                     }
-                    
+
                     benchmark_returns_dict = {
                         'Buy & Hold': portfolio_benchmark_returns
                     }
-                    
+
                     for bench_name, bench_strategy in benchmark_strategies.items():
-                        bench_portfolio_returns = pd.Series(0, index=test_returns.index)
+                        bench_portfolio_returns = pd.Series(0.0, index=test_returns.index)
                         
                         for ticker in tickers:
                             weight = selected_weights[tickers.index(ticker)]
+                            
+                            if weight < 0.0001:
+                                continue  # Saltar activos sin peso
+                            
                             asset_capital = initial_capital * weight
                             
                             if isinstance(test_data.columns, pd.MultiIndex):
@@ -864,7 +878,7 @@ with tab3:
                             bench_portfolio_returns += bench_asset_returns * weight
                         
                         benchmark_returns_dict[bench_name] = bench_portfolio_returns
-                    
+
                     # ============================================
                     # 4. GUARDAR RESULTADOS
                     # ============================================
@@ -877,7 +891,7 @@ with tab3:
                         'asset_strategies': asset_strategies,
                         'strategy_mode': strategy_mode
                     }
-                    
+
                     st.success('✅ Backtest completado!')
                     st.rerun()
             
