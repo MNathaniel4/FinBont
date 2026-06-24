@@ -597,21 +597,21 @@ with tab3:
                     key="commission_rate"
                 ) / 100
             
-            # Distribución del capital
-            st.write("**Distribución del Capital:**")
-            dist_df = pd.DataFrame({
-                'Activo': tickers,
-                'Peso': selected_weights,
-                'Capital': [initial_capital * w for w in selected_weights]
-            })
-            st.dataframe(
-                dist_df.style.format({
+            try:
+                dist_df = pd.DataFrame({
+                    'Activo': tickers,
+                    'Peso': selected_weights,
+                    'Capital': [initial_capital * w for w in selected_weights]
+                })
+                st.dataframe(
+                    dist_df.style.format({
                         'Peso': lambda x: f'{x:.2%}',
                         'Capital': lambda x: f'${x:,.2f}'
-                 }),
-                use_container_width=True
-            )
-
+                    }),
+                    use_container_width=True
+                )
+            except ValueError:
+                st.warning("⚠️ Algunos tickers no tienen datos para el período seleccionado.")
             
             st.markdown("---")
             
@@ -1115,14 +1115,17 @@ with tab3:
                         f"{diferencia/bh_capital:.2%}" if bh_capital > 0 else "N/A"
                     )
 
-
 # Footer
 st.markdown("---")
 st.markdown("### 📋 Resumen de Configuración")
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.write(f"**Activos:** {', '.join(tickers)}")
-with col2:
-    st.write(f"**Periodo Entrenamiento:** {train_start} a {train_end}")
-with col3:
-    st.write(f"**Periodo Prueba:** {test_start} a {test_end}")
+
+try:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write(f"**Activos:** {', '.join(tickers)}")
+    with col2:
+        st.write(f"**Periodo Entrenamiento:** {train_start} a {train_end}")
+    with col3:
+        st.write(f"**Periodo Prueba:** {test_start} a {test_end}")
+except Exception as e:
+    st.warning("⚠️ No se pudo mostrar el resumen completo. Algunos datos pueden estar incompletos.")
