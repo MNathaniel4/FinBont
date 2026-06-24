@@ -25,7 +25,7 @@ from strategies.strategy_registry import strategy_registry
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Trading Strategy Analyzer",
+    page_title="Backtest a portafolios",
     page_icon="📈",
     layout="wide"
 )
@@ -439,11 +439,15 @@ with tab2:
                 st.write(f"  • {s}: {info['description']}")
     
     # Seleccionar estrategias
+    base_strategies = {
+        k: v for k, v in all_strategies.items() 
+        if v.get('category') != 'Combinadas'
+    }
+
     selected_strategies_names = st.multiselect(
         "Selecciona las estrategias a utilizar:",
-        list(all_strategies.keys()),
-        default=["RSI", "MACD"] if "RSI" in all_strategies and "MACD" in all_strategies else list(all_strategies.keys())[:2],
-        help="Puedes seleccionar múltiples estrategias. Se guardarán para usarlas en el backtesting."
+        list(base_strategies.keys()),  # Solo estrategias base
+        default=["RSI", "MACD"] if "RSI" in base_strategies and "MACD" in base_strategies else list(base_strategies.keys())[:2],
     )
     
     # Configurar parámetros de cada estrategia
@@ -496,36 +500,40 @@ with tab2:
     
     # Opción de estrategia combinada
     if len(configured_strategies) > 1:
-        st.subheader("🔗 Estrategia Combinada")
-        st.write("Combina las estrategias seleccionadas con lógica booleana:")
+           # Filtrar solo estrategias NO combinadas para crear nueva combinada
+        base_only = [s for s in configured_strategies if not hasattr(s, 'combination_type')]
         
-        combination_type = st.selectbox(
-            "Tipo de combinación:",
-            ["AND", "OR", "MAJORITY"],
-            help="AND: Todas deben coincidir | OR: Al menos una | MAJORITY: Mayoría de votos"
-        )
-        
-        if st.button("➕ Agregar Estrategia Combinada"):
-            combined_strategy = CombinedStrategy(configured_strategies, combination_type)
+        if len(base_only) > 1:
+            st.subheader("🔗 Estrategia Combinada")
+            st.write("Combina las estrategias seleccionadas con lógica booleana:")
             
-            strategy_registry.register_strategy(
-                name=combined_strategy.name,
-                strategy_class=type(combined_strategy),
-                category="Combinadas",
-                description=f"Estrategia combinada ({combination_type}) - {len(configured_strategies)} estrategias base",
-                params={}  # Sin parámetros adicionales
+            combination_type = st.selectbox(
+                "Tipo de combinación:",
+                ["AND", "OR", "MAJORITY"],
+                help="AND: Todas deben coincidir | OR: Al menos una | MAJORITY: Mayoría de votos"
             )
             
-            # También guardar la instancia para poder usarla
-            strategy_registry._strategies[combined_strategy.name]['instance'] = combined_strategy            
+            if st.button("➕ Agregar Estrategia Combinada"):
+                combined_strategy = CombinedStrategy(configured_strategies, combination_type)
                 
-            configured_strategies.append(combined_strategy)
+                strategy_registry.register_strategy(
+                    name=combined_strategy.name,
+                    strategy_class=type(combined_strategy),
+                    category="Combinadas",
+                    description=f"Estrategia combinada ({combination_type}) - {len(configured_strategies)} estrategias base",
+                    params={}  # Sin parámetros adicionales
+                )
+                
+                # También guardar la instancia para poder usarla
+                strategy_registry._strategies[combined_strategy.name]['instance'] = combined_strategy            
+                    
+                configured_strategies.append(combined_strategy)
 
-            st.session_state['configured_strategies'] = configured_strategies
-            st.success(f"✅ Estrategia combinada agregada: **{combined_strategy.name}**")
-            st.info("La estrategia combinada ya está disponible en el Backtest (Tab 3)")
- 
+                st.session_state['configured_strategies'] = configured_strategies
+                st.success(f"✅ Estrategia combinada agregada: **{combined_strategy.name}**")
+                st.info("La estrategia combinada ya está disponible en el Backtest (Tab 3)")
     
+        
     # Guardar estrategias en session_state
     st.session_state['configured_strategies'] = configured_strategies
     
